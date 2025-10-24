@@ -1,10 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { Person } from './types';
-import { MOCK_PEOPLE } from './constants';
 import AddPersonForm from './components/AddPersonForm';
 import Dashboard from './components/Dashboard';
 import DetailsPage from './components/DetailsPage';
 import Modal from './components/Modal';
+import { databaseService } from './services/databaseService';
 
 export type SortKey = 'firstName' | 'age' | 'registrationDate';
 export type SortDirection = 'asc' | 'desc';
@@ -16,16 +16,35 @@ export interface SortConfig {
 }
 
 const App: React.FC = () => {
-  const [people, setPeople] = useState<Person[]>(MOCK_PEOPLE);
+  const [people, setPeople] = useState<Person[]>([]);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'registrationDate', direction: 'desc' });
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
+  const [loading, setLoading] = useState(true);
 
-  const addPerson = (person: Omit<Person, 'id' | 'registrationDate'>) => {
-    setPeople(prevPeople => [
-      ...prevPeople,
-      { ...person, id: Date.now(), registrationDate: new Date() }
-    ]);
+  useEffect(() => {
+    loadPeople();
+  }, []);
+
+  const loadPeople = async () => {
+    try {
+      setLoading(true);
+      const data = await databaseService.getAllPeople();
+      setPeople(data);
+    } catch (error) {
+      console.error('Failed to load people:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const addPerson = async (person: Omit<Person, 'id' | 'registrationDate'>) => {
+    try {
+      const newPerson = await databaseService.addPerson(person);
+      setPeople(prevPeople => [newPerson, ...prevPeople]);
+    } catch (error) {
+      console.error('Failed to add person:', error);
+    }
   };
 
   const sortedPeople = useMemo(() => {
@@ -47,6 +66,14 @@ const App: React.FC = () => {
   }, [people, sortConfig]);
 
   const renderPage = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center h-screen">
+          <div className="text-xl">Loading...</div>
+        </div>
+      );
+    }
+
     switch (currentPage) {
       case 'details':
         return (
@@ -60,9 +87,9 @@ const App: React.FC = () => {
       case 'dashboard':
       default:
         return (
-          <Dashboard 
-            people={sortedPeople} 
-            onAddPersonClick={() => setIsModalOpen(true)} 
+          <Dashboard
+            people={sortedPeople}
+            onAddPersonClick={() => setIsModalOpen(true)}
             onNavigateToDetails={() => setCurrentPage('details')}
           />
         );
@@ -76,7 +103,7 @@ const App: React.FC = () => {
       </main>
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)}>
-        <AddPersonForm 
+        <AddPersonForm
           addPerson={addPerson}
           onClose={() => setIsModalOpen(false)}
         />
